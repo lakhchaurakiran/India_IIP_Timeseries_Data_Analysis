@@ -116,7 +116,7 @@ Since we do see clear seasonality and trend in the data, we should look at the d
 
 ```{r, fig.height=5, fig.width=15}
 diff_data <- diff(diff(data),12)
-plot(diff_data,type="l")
+plot(diff_data,type="l",main="differenced data -> diff(diff(data),12)")
 ```
 \
 The data looks almost stationary (except for the drop in the last part) with no clear trend, seasonality or change in variation. 
