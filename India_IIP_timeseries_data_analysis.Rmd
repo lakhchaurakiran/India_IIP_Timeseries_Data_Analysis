@@ -22,7 +22,7 @@ library(ggplot2)
 
 In this project we will anlyze India's monthly Index of Industrial Production (IIP) data since Apr. 2012.
 
-### Reading the data
+### Reading the data\
 
 ```{r}
 df <- read.csv(file = 
@@ -30,82 +30,118 @@ df <- read.csv(file =
 sep=';')
 ```
 
-### Viewing the data
+### Viewing the data\
 
 ```{r}
 head(df)
 ```
+\
+changing the type of the MonYear column from character to YearMon\
 
 ```{r}
 df$MonYear<- as.yearmon(df$MonYear,'%b.%y')
+head(df)
 ```
-
 
 ### Plotting the data
 
-Let's plot the Primary.goods data 
+The data contains many fields. Here, we will be looking at just the primary goods output index. Let's plot the primary goods column from the dataframe.\
 
-```{r}
-plot(df$Primary.goods~df$MonYear,type="l")
+```{r, fig.height=5, fig.width=15}
+plot(df$Primary.goods~df$MonYear,type="l",xlab="Date",ylab="Promary goods output index")
 ```
-The data does show clear trend and seasonality, although there is a clear anomaly seen as a sharp drop around March. 2020. and if we look carefully even around Sep. 2019 there was an anomalous drop. For this reason for simplicity of the analysis we will restrict our analysis till mar. 2019 (i.e. 7 years of data)
+
+\
+The data does show clear trend and seasonality, although there is a clear anomaly seen as a sharp drop around March. 2020. and if we look carefully even around Sep. 2019 there was an anomalous drop. For this reason for simplicity of the analysis we will restrict our analysis till mar. 2019 (i.e. 7 years of data)\
+
 
 ```{r}
 df <- df[1:84,]
+nrow(df)
 ```
 
-### Updated plot
+### Updated plot\
 
-```{r}
-plot(df$Primary.goods~df$MonYear,type="l")
+```{r, fig.height=5, fig.width=15}
+plot(df$Primary.goods~df$MonYear,type="l",xlab="Date",ylab="Promary goods output index")
 ```
 
-Let's check for the stationarity of data using ADF test
+### Stationarity tests
+
+Let's check for the stationarity of data using ADF test\
 
 ```{r}
 data <- df$Primary.goods
 print(adf.test(data))
 ```
+\
+ADF test p-value suggests that the null-hypothesis of unit-root (non-statinarity) should be rejected => data is stationary.
 
-Now let's look at the ACF and PACF plots
+Checking for trend stationarity using KPSS test\
 
 ```{r}
+print(kpss.test(data, null = c("Trend"), lshort = TRUE))
+```
+\
+KPSS p-value indicates that the null hypothesis of trend stationarity cannot be rejected.
+
+Let's do the PP unit-root test now\
+
+```{r}
+print(pp.test(data, lshort=TRUE))
+```
+\
+The PP unit root test suggests that the null hypothesis of unit-root (non-stationarity) should be rejected => data is stationary.
+
+So all three tests indicate that the data is stationary.
+
+### Auto-Correlation Functions
+
+Now let's look at the auto-correlations in the ACF and PACF plots\
+
+```{r, fig.height=5, fig.width=15}
 data <- df$Primary.goods
 par(mfrow=c(2,1))
 acf(data,50,main='Auto-Correlation Function of Primary goods index of industrial output')
 pacf(data,50,main='Partial Auto-Correlation Function of Primary goods index of industrial output')
 ```
-
+\
 There are significant correlations in the ACF plot upto lag=25 and PACF plot also shows significant correlations upto lag=13.
 
-Now let's look at the differenced data
+## Guessing the right orders for (S)ARIMA model fitting
 
-```{r}
+### 1. Differncing orders (d, D)
+
+Since we do see clear seasonality and trend in the data, we should look at the differenced data using both seasonal as well as non-seasonal differencing -> *diff(diff(data),12)*\
+
+```{r, fig.height=5, fig.width=15}
 diff_data <- diff(diff(data),12)
 plot(diff_data,type="l")
 ```
-
-The data looks almost stationary with no clear trend, seasonality or change in variation. 
-Now let's test the differenced data with the ADF test.
+\
+The data looks almost stationary (except for the drop in the last part) with no clear trend, seasonality or change in variation. 
+Now let's test the differenced data with the ADF test.\
 
 ```{r}
 print(adf.test(diff_data))
 ```
+\
+Now let's look at the ACF and PACF plots for the differenced data\
 
-```{r}
+```{r, fig.height=5, fig.width=15}
 par(mfrow=c(2,1))
 acf(diff_data,50,main='ACF of differenced data')
 pacf(diff_data,50,main='PACF of differenced data');
 ```
+\
+We see that the correlations have reduced significantly. In the ACF plot there is significant correlation only at lag=12 which might be due to seasonality and in PACF plot also al the correlations are really small. => d=1, D=1
 
-We see that the correlations have reduced significantly. In the ACF plot there is significant correlation only at lag=12 which might be due to seasonality and in PACF plot also al the correlations are really small.
+### 2. Finding the best orders for the auro-regressive (AR; p, P) and Moving Average (MA; q, Q) terms
 
-### Finding best orders for ARIMA model fitting using
-
-1. Grid Search
+**ACF and PACF for differenced data**
 
 Trying for different values of p,q,P,Q and note down AIC, SSE and p-value (for Ljun-box-test). 
-We want high p-values and small AIC and SSE using parsimony principle (simpler the better) while searching
+We want high p-values and small AIC and SSE using parsimony principle (simpler the better) while searching\
 
 ```{r}
 d=1; DD=1; per=12
@@ -131,53 +167,61 @@ for(p in 1:4){
 }
 ```
 
-2. Using auto.arima()
+\
+2. Using auto.arima()\
 
 ```{r}
 y <- msts(data, seasonal.periods=c(12))
 auto.arima( y, d = 1, D = 1,  max.p = 4,  max.q = 4,  max.P = 4,  max.Q = 4, max.order = 10,  start.p = 0,  start.q = 0,  start.P = 0, start.Q = 0, stationary = FALSE, seasonal = TRUE, ic="aic", stepwise = TRUE, approximation = FALSE)
 ```
 
+## Best-model
+
 The models with the minimum values of Akaike Information Criterion (AIC) seem to be very similar from the two methods and correponds to an order p,d,q,P,D,Q of 1,1,1,0,1,1 with a seaonal period of 12 (AIC~342) which also has a large enough Ljung-Box test p-value (~0.88).
 
-### Train-test split
+## Fitting the best-model on the data
+
+### Train-test split\
 
 ```{r}
 N = length(data)
-n = 0.9*N
+n = round(0.9*N)
 train = data[1:n]
 test  = data[(n+1):N]
 ```
 
-### Seasonal ARIMA(0,1,1,0,1,1,12) fitting results
 
-```{r}
+
+### Training the model with the train set\
+
+```{r, fig.height=5, fig.width=15}
 model<-arima(x=train, order = c(1,1,1), seasonal = list(order=c(0,1,1), period=per))
 standard_residuals<- model$residuals/sd(model$residuals)
 plot(standard_residuals,ylab='',main='Standardized Residuals')
 ```
+\
+We see that the residuals look almost stationary which we can also confirm with the ADF test\
 
-We see that the residuals look almost stationary which we can also confirm with the ADF test
 
 ```{r}
 print(adf.test(standard_residuals))
 ```
-
+\
 The residuals seem to be almost stationary.
 
-Let's check for correlations in the residual using the ACF plot
+Let's check for correlations in the residual using the ACF plot\
 
-```{r}
+```{r, fig.height=5, fig.width=15}
 acf(standard_residuals,50,main='ACF of standardized residuals');
 ```
-
+\
 There is almost no significant correlation in the residuals.
 
 Now, we will perform a Ljung-Box test on the residuals. The null hypotheis for the test is:\
 H0: The dataset points are independently distributed (not correlated).\
-where a p-value of greater than 0.05 will be insifficient to reject the null hypothesis.
+where a p-value of greater than 0.05 will be insifficient to reject the null hypothesis.\
 
-```{r}
+```{r, fig.height=5, fig.width=15}
 for (lag in seq(1:50)){
   pval<-Box.test(model$residuals, lag=lag)
   p[lag]=pval$p.value
@@ -185,24 +229,33 @@ for (lag in seq(1:50)){
 plot(p,ylim = (0.0:1), main='p-value from Ljung-Box test')
 abline(h=0.05,lty=2)
 ```
-
+\
 Any value above the dashed line (at y=0.05) is significant. We see that the p-values of the Ljung-Box test at all the lags are significant and therefore the hypothesis that the residuals are not correlated cannot be rejected.
 
-### Testing the model
+### Testing the predictions on the test set\
 
-```{r}
+```{r, fig.height=5, fig.width=15}
 model<-arima(x=train, order = c(1,1,1), seasonal = list(order=c(0,1,1), period=per))
 pred_len=length(test)
 plot(forecast(model, h=pred_len),main='Testing predictions')
 train_x = seq(length(train)+1,length(train)+length(test))
 lines(train_x,test)
 ```
-
+\
 Here the black lines in the first part (left) shows the training data and those in the second part shows the test data which alos has blue lines overlaid on it showing the predictions from our model which seem to match the test data pretty well. The small shaded region on the blue lines shows the confidence interval (difficult to resolve here but it actually consists of two different dark and light shaded regions showing the 80% and 95% confidence regions).
 
-### Forecasting using the best-model
+## Evaluating predictions\
 
 ```{r}
+df2 <- forecast(model,h=pred_len)
+df2 <- data.frame(df2)
+print(paste0('Root Mean Squared Error in predictions =', round(sqrt(mean((test-df2[,1])**2))/mean(test)*100,2), '%'))
+```
+
+
+## Forecasting using the best-model\
+
+```{r, fig.height=5, fig.width=15}
 model<-arima(x=data, order = c(1,1,1), seasonal = list(order=c(0,1,1), period=per))
 par(mfrow=c(1,1))
 h=12 # forecasting for the 12 months after the end of the dataset
